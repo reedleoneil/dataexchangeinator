@@ -17,6 +17,8 @@ const (
   FILE_TRANSFER_METHOD_COL = "L"
   STAGING_DIR_COL = "X"
   ARCHIVE_DIR_COL = "AA"
+  FILE_AVAILABILITY = "G"
+  DAY_UNAVAILABLE = "H"
   SHEET = "FILE META"
 )
 
@@ -80,6 +82,24 @@ func (d *dataExchange) GetFileArchiveDirectory(row int) (string, error) {
   return cell, nil
 }
 
+func (d *dataExchange) GetFileAvailability(row int) (string, error) {
+  cell, err := d.spreadSheet.GetCellValue(SHEET, FILE_AVAILABILITY + strconv.Itoa(row))
+  if err != nil {
+    fmt.Println(err)
+    return "", err
+  }
+  return cell, nil
+}
+
+func (d *dataExchange) GetDayUnavailable(row int) (string, error) {
+  cell, err := d.spreadSheet.GetCellValue(SHEET, DAY_UNAVAILABLE + strconv.Itoa(row))
+  if err != nil {
+    fmt.Println(err)
+    return "", err
+  }
+  return cell, nil
+}
+
 func (d *dataExchange) IsFileActive(row int) (bool, error) {
   cell, err := d.spreadSheet.GetCellValue(SHEET, FILE_IS_ACTIVE_COL + strconv.Itoa(row))
   if err != nil {
@@ -95,7 +115,7 @@ func (d *dataExchange) SetFileTransferMethod(row int, value string) {
 }
 
 func (d *dataExchange) Save() {
-  if err := d.spreadSheet.SaveAs("PROCESSED_" + d.fileName); err != nil {
+  if err := d.spreadSheet.SaveAs(d.fileName); err != nil {
         fmt.Println(err)
   }
 }
@@ -162,9 +182,58 @@ func CompareTwoStrings(stringOne, stringTwo string) float32 {
 	return (2.0 * intersectionSize) / (float32(len(stringOne)) + float32(len(stringTwo)) - 2)
 }
 
-func main() {
-  filename := os.Args[1]
-  fileMatchPercentage, _ := strconv.ParseFloat(os.Args[2], 32)
+func IsRecievedToday(t time.Time) bool {
+	dayRecieved := t.Day()
+  monthRecieved := t.Month()
+  yearRecieved := t.Year()
+	now := time.Now()
+	dayNow := now.Day()
+  monthNow := now.Month()
+  yearNow := now.Year()
+
+  if dayNow == dayRecieved && monthNow == monthRecieved && yearNow == yearRecieved {
+    return true
+  } else {
+    return false
+  }
+}
+
+func Step1() {
+  filename := os.Args[2]
+  day := os.Args[3]
+
+  dataexchange, _ := NewDataExchange(filename)
+
+  rows, _ := dataexchange.GetRows()
+  for i, _ := range rows {
+    isFileActive, _ := dataexchange.IsFileActive(i + 1)
+    fileTransferMethod, _ := dataexchange.GetFileTransferMethod(i + 1)
+	fileAvailability, _ := dataexchange.GetFileAvailability(i + 1)
+	dayUnavailable, _ := dataexchange.GetDayUnavailable(i + 1)
+
+	if isFileActive {
+	  if fileTransferMethod == "Automatic" {
+	    dataexchange.SetFileTransferMethod(i + 1, "A")
+      } else if fileTransferMethod == "Manual" {
+	    dataexchange.SetFileTransferMethod(i + 1, "M")
+	  } else if isFileActive && fileTransferMethod == "Not Available" {
+	    dataexchange.SetFileTransferMethod(i + 1, "N")
+	  }
+
+	  fa := strings.ToLower(fileAvailability)
+	  du := strings.ToLower(dayUnavailable)
+	  if fa != "daily" || strings.Contains(du, day) {
+	  	dataexchange.SetFileTransferMethod(i + 1, "Not Available")
+	  }
+	}
+  }
+
+  dataexchange.Save()
+}
+
+func Step2() {
+  filename := os.Args[2]
+  fileMatchPercentage, _ := strconv.ParseFloat(os.Args[3], 32)
 
   dataexchange, _ := NewDataExchange(filename)
 
@@ -190,7 +259,7 @@ func main() {
         }
 
         for _, f := range files {
-          if CompareTwoStrings(f.Name(), fileName) >= float32(fileMatchPercentage) && recievedToday(f.ModTime()) {
+          if CompareTwoStrings(f.Name(), fileName) >= float32(fileMatchPercentage) && IsRecievedToday(f.ModTime()) {
             dataexchange.SetFileTransferMethod(i + 1, "Automatic")
             fmt.Println("Automatic:" + fileName + " " + directory)
           }
@@ -202,20 +271,17 @@ func main() {
   dataexchange.Save()
 }
 
-func recievedToday(t time.Time) bool {
-	dayRecieved := t.Day()
-  monthRecieved := t.Month()
-  yearRecieved := t.Year()
-	now := time.Now()
-	dayNow := now.Day()
-  monthNow := now.Month()
-  yearNow := now.Year()
+func main() {
+  mode := os.Args[1]
+  
 
-  if dayNow == dayRecieved && monthNow == monthRecieved && yearNow == yearRecieved {
-    return true
-  } else {
-    return false
+  if mode == "1" {
+	Step1()
+  } else if mode == "2" {
+	Step2()
   }
+
+  
 }
 
 func removeSpaces(stringOne, stringTwo *string) {
