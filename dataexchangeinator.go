@@ -19,6 +19,7 @@ const (
   ARCHIVE_DIR_COL = "AA"
   FILE_AVAILABILITY = "G"
   DAY_UNAVAILABLE = "H"
+  TIMESTAMP = "M"
   SHEET = "FILE META"
 )
 
@@ -112,6 +113,10 @@ func (d *dataExchange) IsFileActive(row int) (bool, error) {
 
 func (d *dataExchange) SetFileTransferMethod(row int, value string) {
   d.spreadSheet.SetCellValue(SHEET, FILE_TRANSFER_METHOD_COL + strconv.Itoa(row), value)
+}
+
+func (d *dataExchange) SetTimestamp(row int) {
+  d.spreadSheet.SetCellValue(SHEET, FILE_TRANSFER_METHOD_COL + strconv.Itoa(row), time.Now())
 }
 
 func (d *dataExchange) Save() {
@@ -261,6 +266,7 @@ func Step2() {
         for _, f := range files {
           if CompareTwoStrings(f.Name(), fileName) >= float32(fileMatchPercentage) && IsRecievedToday(f.ModTime()) {
             dataexchange.SetFileTransferMethod(i + 1, "Automatic")
+            dataexchange.SetTimestamp(i + 1)
             fmt.Println("Automatic:" + fileName + " " + directory)
           }
         }
