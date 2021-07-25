@@ -30,11 +30,15 @@ type dataExchange struct {
 
 type DataExchange interface {
   GetRows() ([][]string, error)
+  GetFileName(row int) (string, error)
   GetFileTransferMethod(row int) (string, error)
   GetFileStageDirectory(row int) (string, error)
   GetFileArchiveDirectory(row int) (string, error)
+  GetFileAvailability(row int) (string, error)
+  GetDayUnavailable(row int) (string, error)
   IsFileActive(row int) (bool, error)
   SetFileTransferMethod(row int, value string)
+  SetTimestamp(row int, timestamp string)
   Save()
 }
 
@@ -115,8 +119,8 @@ func (d *dataExchange) SetFileTransferMethod(row int, value string) {
   d.spreadSheet.SetCellValue(SHEET, FILE_TRANSFER_METHOD_COL + strconv.Itoa(row), value)
 }
 
-func (d *dataExchange) SetTimestamp(row int) {
-  d.spreadSheet.SetCellValue(SHEET, FILE_TRANSFER_METHOD_COL + strconv.Itoa(row), time.Now())
+func (d *dataExchange) SetTimestamp(row int, timestamp string) {
+  d.spreadSheet.SetCellValue(SHEET, TIMESTAMP + strconv.Itoa(row), timestamp)
 }
 
 func (d *dataExchange) Save() {
@@ -135,6 +139,10 @@ func NewDataExchange(filename string) (*dataExchange, error) {
   d.fileName = filename
   return d, nil
 }
+
+/*
+** Private Functions
+*/
 
 func CompareTwoStrings(stringOne, stringTwo string) float32 {
 	removeSpaces(&stringOne, &stringTwo)
@@ -203,43 +211,41 @@ func IsRecievedToday(t time.Time) bool {
   }
 }
 
-func Step1() {
-  filename := os.Args[2]
-  day := os.Args[3]
+/*
+** Main
+*/
 
+func PrePopulate(filename string, day string) {
   dataexchange, _ := NewDataExchange(filename)
 
   rows, _ := dataexchange.GetRows()
   for i, _ := range rows {
     isFileActive, _ := dataexchange.IsFileActive(i + 1)
     fileTransferMethod, _ := dataexchange.GetFileTransferMethod(i + 1)
-	fileAvailability, _ := dataexchange.GetFileAvailability(i + 1)
-	dayUnavailable, _ := dataexchange.GetDayUnavailable(i + 1)
+	  fileAvailability, _ := dataexchange.GetFileAvailability(i + 1)
+	  dayUnavailable, _ := dataexchange.GetDayUnavailable(i + 1)
 
-	if isFileActive {
-	  if fileTransferMethod == "Automatic" {
-	    dataexchange.SetFileTransferMethod(i + 1, "A")
-      } else if fileTransferMethod == "Manual" {
-	    dataexchange.SetFileTransferMethod(i + 1, "M")
-	  } else if isFileActive && fileTransferMethod == "Not Available" {
-	    dataexchange.SetFileTransferMethod(i + 1, "N")
+	  if isFileActive {
+	    if fileTransferMethod == "Automatic" {
+	      dataexchange.SetFileTransferMethod(i + 1, "A")
+        } else if fileTransferMethod == "Manual" {
+	      dataexchange.SetFileTransferMethod(i + 1, "M")
+	    } else if isFileActive && fileTransferMethod == "Not Available" {
+	      dataexchange.SetFileTransferMethod(i + 1, "N")
+	    }
+  
+	    fa := strings.ToLower(fileAvailability)
+	    du := strings.ToLower(dayUnavailable)
+	    if fa != "daily" || strings.Contains(du, day) {
+	    	dataexchange.SetFileTransferMethod(i + 1, "Not Available")
+	    }
 	  }
-
-	  fa := strings.ToLower(fileAvailability)
-	  du := strings.ToLower(dayUnavailable)
-	  if fa != "daily" || strings.Contains(du, day) {
-	  	dataexchange.SetFileTransferMethod(i + 1, "Not Available")
-	  }
-	}
   }
 
   dataexchange.Save()
 }
 
-func Step2() {
-  filename := os.Args[2]
-  fileMatchPercentage, _ := strconv.ParseFloat(os.Args[3], 32)
-
+func Process(filename string, fileMatchPercentage float64) {
   dataexchange, _ := NewDataExchange(filename)
 
   rows, _ := dataexchange.GetRows()
@@ -249,16 +255,16 @@ func Step2() {
     fileTransferMethod, _ := dataexchange.GetFileTransferMethod(i + 1)
     fileStageDirectory, _ := dataexchange.GetFileStageDirectory(i + 1)
     fileArchiveDirectory, _ := dataexchange.GetFileArchiveDirectory(i + 1)
-    if isFileActive && fileTransferMethod == "A" {
-      var directory string
-      if fileArchiveDirectory != "" {
-        directory = fileArchiveDirectory
-      } else {
-        directory = fileStageDirectory
-      }
+    if isFileActive && (fileTransferMethod == "A" || fileTransferMethod == "N") {
+      // var directory string
+      // if fileArchiveDirectory != "" {
+      //   directory = fileArchiveDirectory
+      // } else {
+      //   directory = fileStageDirectory
+      // }
 
-      if directory != "" {
-        files, err := ioutil.ReadDir(directory)
+      if fileArchiveDirectory != "" {
+        files, err := ioutil.ReadDir(fileArchiveDirectory)
         if err != nil {
             fmt.Println(err)
         }
@@ -266,8 +272,23 @@ func Step2() {
         for _, f := range files {
           if CompareTwoStrings(f.Name(), fileName) >= float32(fileMatchPercentage) && IsRecievedToday(f.ModTime()) {
             dataexchange.SetFileTransferMethod(i + 1, "Automatic")
-            dataexchange.SetTimestamp(i + 1)
-            fmt.Println("Automatic:" + fileName + " " + directory)
+            dataexchange.SetTimestamp(i + 1, f.ModTime().Format("01/02/2006") + " " + f.ModTime().Format("3:04 PM"))
+            fmt.Println("Automatic:" + fileName + " " + fileArchiveDirectory)
+          }
+        }
+      }
+
+      if fileStageDirectory != "" {
+        files, err := ioutil.ReadDir(fileStageDirectory)
+        if err != nil {
+            fmt.Println(err)
+        }
+
+        for _, f := range files {
+          if CompareTwoStrings(f.Name(), fileName) >= float32(fileMatchPercentage) && IsRecievedToday(f.ModTime()) {
+            dataexchange.SetFileTransferMethod(i + 1, "Automatic")
+            dataexchange.SetTimestamp(i + 1, f.ModTime().Format("01/02/2006") + " " + f.ModTime().Format("3:04 PM"))
+            fmt.Println("Automatic:" + fileName + " " + fileStageDirectory)
           }
         }
       }
@@ -278,16 +299,12 @@ func Step2() {
 }
 
 func main() {
-  mode := os.Args[1]
-  
+  filename := os.Args[1]
+  day := os.Args[3]
+  fileMatchPercentage, _ := strconv.ParseFloat(os.Args[2], 32)
 
-  if mode == "1" {
-	Step1()
-  } else if mode == "2" {
-	Step2()
-  }
-
-  
+	PrePopulate(filename, day)
+	Process(filename, fileMatchPercentage)
 }
 
 func removeSpaces(stringOne, stringTwo *string) {
