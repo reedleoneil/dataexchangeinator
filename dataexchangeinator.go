@@ -256,12 +256,20 @@ func Process(filename string, fileMatchPercentage float64) {
     fileStageDirectory, _ := dataexchange.GetFileStageDirectory(i + 1)
     fileArchiveDirectory, _ := dataexchange.GetFileArchiveDirectory(i + 1)
     if isFileActive && (fileTransferMethod == "A" || fileTransferMethod == "N") {
-      // var directory string
-      // if fileArchiveDirectory != "" {
-      //   directory = fileArchiveDirectory
-      // } else {
-      //   directory = fileStageDirectory
-      // }
+      if fileStageDirectory != "" {
+        files, err := ioutil.ReadDir(fileStageDirectory)
+        if err != nil {
+            fmt.Println(err)
+        }
+
+        for _, f := range files {
+          if CompareTwoStrings(f.Name(), fileName) >= float32(fileMatchPercentage) && IsRecievedToday(f.ModTime()) {
+            dataexchange.SetFileTransferMethod(i + 1, "Automatic")
+            dataexchange.SetTimestamp(i + 1, f.ModTime().Format("01/02/2006") + " " + f.ModTime().Format("3:04 PM"))
+            fmt.Println("Automatic:" + fileName + " " + fileStageDirectory)
+          }
+        }
+      }
 
       if fileArchiveDirectory != "" {
         files, err := ioutil.ReadDir(fileArchiveDirectory)
@@ -274,21 +282,6 @@ func Process(filename string, fileMatchPercentage float64) {
             dataexchange.SetFileTransferMethod(i + 1, "Automatic")
             dataexchange.SetTimestamp(i + 1, f.ModTime().Format("01/02/2006") + " " + f.ModTime().Format("3:04 PM"))
             fmt.Println("Automatic:" + fileName + " " + fileArchiveDirectory)
-          }
-        }
-      }
-
-      if fileStageDirectory != "" {
-        files, err := ioutil.ReadDir(fileStageDirectory)
-        if err != nil {
-            fmt.Println(err)
-        }
-
-        for _, f := range files {
-          if CompareTwoStrings(f.Name(), fileName) >= float32(fileMatchPercentage) && IsRecievedToday(f.ModTime()) {
-            dataexchange.SetFileTransferMethod(i + 1, "Automatic")
-            dataexchange.SetTimestamp(i + 1, f.ModTime().Format("01/02/2006") + " " + f.ModTime().Format("3:04 PM"))
-            fmt.Println("Automatic:" + fileName + " " + fileStageDirectory)
           }
         }
       }
